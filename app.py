@@ -2,29 +2,25 @@ import streamlit as st
 from docx import Document
 from docx.shared import Inches
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.enum.dml import MSO_THEME_COLOR_INDEX
+from docx.oxml.shared import OxmlElement, qn
 import re
 import io
 from datetime import datetime
-import random
 
-# ====== CONFIGURACIÓN DE LA PÁGINA ======
+# Configuración de la página
 st.set_page_config(
-    page_title="🛡️ Generador de Certificados Pacífico Seguros",
+    page_title="Generador de Certificados Pacífico Seguros",
     page_icon="🛡️",
-    layout="wide",
-    initial_sidebar_state="collapsed"
+    layout="centered"
 )
 
-# ====== CSS PERSONALIZADO ======
+# CSS personalizado
 st.markdown("""
 <style>
-    /* Ocultar elementos de Streamlit */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
     
-    /* Estilo del encabezado */
     .main-header {
         background: linear-gradient(90deg, #1e3c72 0%, #2a5298 100%);
         color: white;
@@ -34,785 +30,457 @@ st.markdown("""
         margin-bottom: 2rem;
     }
     
-    /* Estilo de las tarjetas de progreso */
-    .progress-card {
-        background: #f8f9ff;
-        border-left: 4px solid #1e3c72;
-        padding: 1rem;
-        margin: 1rem 0;
-        border-radius: 5px;
-    }
-    
-    /* Estilo de los campos de entrada */
     .stTextInput > div > div > input {
         border-radius: 5px;
         border: 2px solid #e0e0e0;
+        font-size: 18px;
+        padding: 12px;
     }
     
     .stTextInput > div > div > input:focus {
         border-color: #1e3c72;
         box-shadow: 0 0 0 0.2rem rgba(30, 60, 114, 0.25);
     }
+    
+    .stButton > button {
+        background: linear-gradient(90deg, #1e3c72 0%, #2a5298 100%);
+        color: white;
+        border: none;
+        border-radius: 5px;
+        padding: 12px 24px;
+        font-size: 16px;
+        font-weight: bold;
+    }
 </style>
 """, unsafe_allow_html=True)
 
-# ====== CLASE PARA GENERAR EL CERTIFICADO ======
-class CertificadoPacificoGenerator:
-    def __init__(self):
-        self.variables = [
-            'nombre_seguro',
-            'numero_certificado', 
-            'numero_poliza',
-            'codigo_registro',
-            'nombre_asegurado',
-            'riesgo_protegido',
-            'fecha_inicio',
-            'tipo_documento',
-            'numero_documento',
-            'domicilio_asegurado',
-            'correo_asegurado',
-            'telefono_asegurado',
-            'relacion_contratante',
-            'situaciones_cobertura',
-            'situaciones_adicionales',
-            'condiciones_asegurabilidad',
-            'situaciones_no_cubiertas',
-            'uso_cobertura',
-            'moneda',
-            'costo_total',
-            'igv',
-            'frecuencia_pago',
-            'medio_cobro',
-            'duracion_seguro',
-            'requisitos_vigencia',
-            'condiciones_fin',
-            'fecha_emision'
-        ]
-        
-        self.questions = {
-            'nombre_seguro': {
-                'question': '¿Cuál es el nombre del seguro?',
-                'help': 'Ejemplo: Seguro de Vida, Seguro Vehicular, etc.',
-                'type': 'text'
-            },
-            'numero_certificado': {
-                'question': '¿Cuál es el número de certificado?',
-                'help': 'Número único del certificado',
-                'type': 'text'
-            },
-            'numero_poliza': {
-                'question': '¿Cuál es el número de póliza?',
-                'help': 'Número de la póliza de seguro',
-                'type': 'text'
-            },
-            'codigo_registro': {
-                'question': '¿Cuál es el código de registro?',
-                'help': 'Código interno de registro',
-                'type': 'text'
-            },
-            'nombre_asegurado': {
-                'question': '¿Cuál es el nombre completo del asegurado?',
-                'help': 'Nombres y apellidos completos',
-                'type': 'text'
-            },
-            'riesgo_protegido': {
-                'question': '¿Contra qué riesgo está protegido?',
-                'help': 'Ejemplo: fallecimiento, accidentes, robo, etc.',
-                'type': 'text'
-            },
-            'fecha_inicio': {
-                'question': '¿Cuál es la fecha de inicio de vigencia?',
-                'help': 'Fecha en que inicia la cobertura',
-                'type': 'date'
-            },
-            'tipo_documento': {
-                'question': '¿Qué tipo de documento de identidad?',
-                'help': 'DNI, Pasaporte, Carnet de Extranjería, etc.',
-                'type': 'text'
-            },
-            'numero_documento': {
-                'question': '¿Cuál es el número de documento?',
-                'help': 'Número del documento de identidad',
-                'type': 'text'
-            },
-            'domicilio_asegurado': {
-                'question': '¿Cuál es el domicilio del asegurado?',
-                'help': 'Dirección completa',
-                'type': 'text'
-            },
-            'correo_asegurado': {
-                'question': '¿Cuál es el correo electrónico del asegurado?',
-                'help': 'Email de contacto',
-                'type': 'email'
-            },
-            'telefono_asegurado': {
-                'question': '¿Cuál es el teléfono del asegurado?',
-                'help': 'Número de teléfono',
-                'type': 'text'
-            },
-            'relacion_contratante': {
-                'question': '¿Cuál es la relación del asegurado con el contratante?',
-                'help': 'Ejemplo: Titular, Beneficiario, Cónyuge, etc.',
-                'type': 'text'
-            },
-            'situaciones_cobertura': {
-                'question': '¿En qué situaciones cubre el seguro?',
-                'help': 'Describe las coberturas principales',
-                'type': 'textarea'
-            },
-            'situaciones_adicionales': {
-                'question': '¿Qué situaciones adicionales cubre?',
-                'help': 'Coberturas adicionales o complementarias',
-                'type': 'textarea'
-            },
-            'condiciones_asegurabilidad': {
-                'question': '¿Cuáles son las condiciones de asegurabilidad?',
-                'help': 'Condiciones especiales que debe cumplir',
-                'type': 'textarea'
-            },
-            'situaciones_no_cubiertas': {
-                'question': '¿Qué situaciones NO cubre el seguro?',
-                'help': 'Exclusiones de la póliza',
-                'type': 'textarea'
-            },
-            'uso_cobertura': {
-                'question': '¿Cómo hacer uso de la cobertura?',
-                'help': 'Procedimiento para hacer un reclamo',
-                'type': 'textarea'
-            },
-            'moneda': {
-                'question': '¿En qué moneda está el seguro?',
-                'help': 'Soles, Dólares, etc.',
-                'type': 'text'
-            },
-            'costo_total': {
-                'question': '¿Cuál es el costo total del seguro?',
-                'help': 'Monto total sin IGV',
-                'type': 'number'
-            },
-            'igv': {
-                'question': '¿Cuál es el monto del IGV?',
-                'help': 'Impuesto General a las Ventas',
-                'type': 'number'
-            },
-            'frecuencia_pago': {
-                'question': '¿Cuál es la frecuencia de pago?',
-                'help': 'Mensual, Anual, Trimestral, etc.',
-                'type': 'text'
-            },
-            'medio_cobro': {
-                'question': '¿Cómo se cobra el seguro?',
-                'help': 'Tarjeta de crédito, débito automático, etc.',
-                'type': 'text'
-            },
-            'duracion_seguro': {
-                'question': '¿Cuánto dura el seguro?',
-                'help': 'Un mes, un año, etc.',
-                'type': 'text'
-            },
-            'requisitos_vigencia': {
-                'question': '¿Qué requisitos debe cumplir para que empiece la vigencia?',
-                'help': 'Condiciones para que inicie la cobertura',
-                'type': 'textarea'
-            },
-            'condiciones_fin': {
-                'question': '¿En qué condiciones termina el seguro?',
-                'help': 'Situaciones que dan fin al contrato',
-                'type': 'textarea'
-            },
-            'fecha_emision': {
-                'question': '¿Cuál es la fecha de emisión del certificado?',
-                'help': 'Fecha en que se emite este certificado',
-                'type': 'date'
-            }
-        }
+def create_exact_certificate(nombre_seguro):
+    """Crea el certificado exacto preservando el formato original"""
     
-    def generate_certificate_document(self, responses):
-        """Genera el documento Word del certificado con el formato original"""
-        
-        # Crear nuevo documento
-        doc = Document()
-        
-        # Configurar márgenes y formato general
-        section = doc.sections[0]
-        section.left_margin = Inches(1)
-        section.right_margin = Inches(1)
-        section.top_margin = Inches(1)
-        section.bottom_margin = Inches(1)
-        
-        # ENCABEZADO
-        header = doc.add_paragraph()
-        header_run = header.add_run(f"Certificado N° {responses.get('numero_certificado', 'XXXXXXX')} -- Seguro de ")
-        header_run.italic = True
-        
-        header_run2 = header.add_run(responses.get('nombre_seguro', '[NOMBRE DEL SEGURO]'))
-        header_run2.bold = True
-        
-        # Número de póliza
-        poliza_p = doc.add_paragraph()
-        poliza_run = poliza_p.add_run(f"Póliza Nº {responses.get('numero_poliza', 'XXXXX')} - Código de registro {responses.get('codigo_registro', 'XXXXXXX')}")
-        poliza_run.italic = True
-        
-        # Saludo
-        doc.add_paragraph(f"¡Hola {responses.get('nombre_asegurado', 'XXXXXXXXX')}!")
-        doc.add_paragraph("¡Felicidades! Estás asegurado.")
-        
-        # Confirmación de seguro
-        confirmacion = doc.add_paragraph("Confirmamos que tienes un seguro activo que te protege frente a ")
-        confirmacion_run = confirmacion.add_run(responses.get('riesgo_protegido', '[COMPLETAR CON EL RIESGO]'))
-        confirmacion_run.bold = True
-        
-        # CONTRATANTE
-        contratante_title = doc.add_paragraph()
-        contratante_run = contratante_title.add_run("CONTRATANTE")
-        contratante_run.bold = True
-        
-        doc.add_paragraph("XXXXX, RUC xxxxxxx, Dirección xxxxxxxxx")
-        doc.add_paragraph("Distrito xxxxxxx xxxxxxx también llamado sólo \"xxxxx\".")
-        
-        # VIGENCIA
-        vigencia_title = doc.add_paragraph()
-        vigencia_run = vigencia_title.add_run("Vigencia del Seguro: XXXXXXXXXXX")
-        vigencia_run.bold = True
-        
-        doc.add_paragraph(f"Inicio de Vigencia: Desde las XX horas del {responses.get('fecha_inicio', 'DD/MM/AAA')}")
-        doc.add_paragraph("Tu seguro se renovará automáticamente.")
-        
-        # INFORMACIÓN DE CONTACTO
-        contacto_title = doc.add_paragraph()
-        contacto_run = contacto_title.add_run("Información de Contacto de Pacífico Seguros")
-        contacto_run.bold = True
-        
-        doc.add_paragraph("Pacífico Compañía de Seguros y Reaseguros S.A.")
-        doc.add_paragraph("RUC N 20332970411 Av. Juan de Arona 830, San Isidro")
-        doc.add_paragraph("Teléf.: XXX-XXXX / WhatsApp: +51 XXX-XXXX")
-        doc.add_paragraph("Pág. Web.: https://www.pacifico.com.pe/")
-        
-        # Mensaje de contacto
-        contacto_msg = doc.add_paragraph()
-        contacto_msg_run = contacto_msg.add_run("Si tienes alguna duda sobre tu cobertura o cómo usar tu seguro, contáctanos al número de teléfono indicado o escríbenos por WhatsApp.")
-        contacto_msg_run.bold = True
-        
-        # DATOS DEL ASEGURADO
-        asegurado_title = doc.add_paragraph()
-        asegurado_run = asegurado_title.add_run("¿Quién es el ASEGURADO?")
-        asegurado_run.bold = True
-        
-        doc.add_paragraph(responses.get('nombre_asegurado', '[Nombre y Apellidos del Asegurado]'))
-        doc.add_paragraph("¡Tú estás asegurado!")
-        doc.add_paragraph(responses.get('tipo_documento', '[Tipo Doc]'))
-        doc.add_paragraph(responses.get('numero_documento', '[Número Doc]'))
-        doc.add_paragraph(responses.get('domicilio_asegurado', '[Domicilio]'))
-        doc.add_paragraph(responses.get('correo_asegurado', '[Correo]'))
-        doc.add_paragraph(responses.get('telefono_asegurado', '[Teléfono]'))
-        
-        # Domicilio contractual
-        domicilio_contractual = doc.add_paragraph()
-        domicilio_contractual_run = domicilio_contractual.add_run("Tu domicilio contractual será el correo electrónico que brindaste en la Solicitud de Seguro. Si no lo hiciste, será la dirección física ingresada en los sistemas del [completar con la info del canal. Por ejemplo, para PT es el \"Banco\"].")
-        domicilio_contractual_run.bold = True
-        
-        doc.add_paragraph(f"Relación del ASEGURADO con el CONTRATANTE: {responses.get('relacion_contratante', 'XXXXXXX')}")
-        
-        # COBERTURAS
-        cobertura_title = doc.add_paragraph()
-        cobertura_run = cobertura_title.add_run("¿En qué situaciones te cubre tu seguro?")
-        cobertura_run.bold = True
-        
-        cobertura_content = doc.add_paragraph()
-        cobertura_content_run = cobertura_content.add_run(responses.get('situaciones_cobertura', '[Aquí debes modificar en función a los inputs]'))
-        cobertura_content_run.bold = True
-        
-        # COBERTURAS ADICIONALES
-        adicional_title = doc.add_paragraph()
-        adicional_run = adicional_title.add_run("¿En qué situaciones adicionales te cubre tu seguro?")
-        adicional_run.bold = True
-        
-        adicional_content = doc.add_paragraph()
-        adicional_content_run = adicional_content.add_run(responses.get('situaciones_adicionales', 'xxxxxxxxxxxxxx'))
-        adicional_content_run.bold = True
-        
-        # INFORMACIÓN IMPORTANTE
-        info_title = doc.add_paragraph()
-        info_run = info_title.add_run("¿Qué información importante debes considerar?")
-        info_run.bold = True
-        
-        info_content = doc.add_paragraph()
-        info_content_run = info_content.add_run(responses.get('condiciones_asegurabilidad', '[Completar con las condiciones de asegurabilidad]'))
-        info_content_run.bold = True
-        
-        # EXCLUSIONES
-        exclusiones_title = doc.add_paragraph()
-        exclusiones_run = exclusiones_title.add_run("¿En qué situaciones que NO cubre tu seguro?")
-        exclusiones_run.bold = True
-        
-        exclusiones_content = doc.add_paragraph()
-        exclusiones_content_run = exclusiones_content.add_run(responses.get('situaciones_no_cubiertas', '[Aquí debes modificar en función a los inputs]'))
-        exclusiones_content_run.bold = True
-        
-        # USO DE COBERTURA
-        uso_title = doc.add_paragraph()
-        uso_run = uso_title.add_run("¿Cómo hago uso de la cobertura?")
-        uso_run.bold = True
-        
-        uso_intro = doc.add_paragraph()
-        uso_intro_run = uso_intro.add_run("Si sucediera alguna de las situaciones cubiertas por el seguro que describimos anteriormente:")
-        uso_intro_run.bold = True
-        
-        uso_content = doc.add_paragraph()
-        uso_content_run = uso_content.add_run(responses.get('uso_cobertura', '[Aquí debes modificar en función a los inputs]'))
-        uso_content_run.bold = True
-        
-        # Límite de tiempo
-        limite = doc.add_paragraph()
-        limite_run = limite.add_run("El límite de tiempo que tienes para presentar tus documentos es de 10 años.")
-        limite_run.bold = True
-        
-        # COSTOS
-        costo_title = doc.add_paragraph()
-        costo_run = costo_title.add_run("¿Cuánto cuesta y cómo se paga el seguro?")
-        costo_run.bold = True
-        
-        # Tabla de costos
-        table = doc.add_table(rows=5, cols=2)
-        table.style = 'Table Grid'
-        
-        # Llenar tabla
-        cells = table.rows[0].cells
-        cells[0].text = "Moneda"
-        cells[1].text = responses.get('moneda', 'xxxxxxx')
-        
-        cells = table.rows[1].cells
-        cells[0].text = "Costo Total del Seguro"
-        cells[1].text = str(responses.get('costo_total', 'xxxx'))
-        
-        cells = table.rows[2].cells
-        cells[0].text = "IGV"
-        cells[1].text = str(responses.get('igv', 'xxxx'))
-        
-        cells = table.rows[3].cells
-        cells[0].text = "Frecuencia"
-        cells[1].text = responses.get('frecuencia_pago', 'xxxx')
-        
-        cells = table.rows[4].cells
-        cells[0].text = "¿Cómo te cobramos el seguro?"
-        cells[1].text = responses.get('medio_cobro', '[completar la información del medio de cobro]')
-        
-        # DURACIÓN
-        duracion_title = doc.add_paragraph()
-        duracion_run = duracion_title.add_run("¿Cuánto dura tu seguro?")
-        duracion_run.bold = True
-        
-        doc.add_paragraph(f"Tu seguro puede durar {responses.get('duracion_seguro', 'un mes o un año')}, según el plan que elegiste.")
-        
-        # INICIO Y FIN
-        inicio_title = doc.add_paragraph()
-        inicio_run = inicio_title.add_run("¿Cuándo empieza y cuándo termina?")
-        inicio_run.bold = True
-        
-        inicio_subtitle = doc.add_paragraph()
-        inicio_subtitle_run = inicio_subtitle.add_run("Inicio: Tu seguro empieza desde que lo contratas, si:")
-        inicio_subtitle_run.bold = True
-        
-        inicio_content = doc.add_paragraph()
-        inicio_content_run = inicio_content.add_run(responses.get('requisitos_vigencia', '[Completar con los requisitos propios del producto]'))
-        inicio_content_run.bold = True
-        
-        fin_subtitle = doc.add_paragraph()
-        fin_subtitle_run = fin_subtitle.add_run("Fin: Tu seguro terminará si ocurre alguna de estas situaciones:")
-        fin_subtitle_run.bold = True
-        
-        fin_content = doc.add_paragraph()
-        fin_content_run = fin_content.add_run(responses.get('condiciones_fin', '[Completar con las condiciones de fin]'))
-        fin_content_run.bold = True
-        
-        # DERECHO DE ARREPENTIMIENTO
-        arrepentimiento_title = doc.add_paragraph()
-        arrepentimiento_run = arrepentimiento_title.add_run("¿Puedo arrepentirme de haber contratado el seguro?")
-        arrepentimiento_run.bold = True
-        
-        doc.add_paragraph("Sí. Si cambias de opinión, puedes cancelar el seguro sin dar una razón y sin penalidades dentro de los 15 días calendario desde que recibiste este Certificado.")
-        
-        # FECHA DE EMISIÓN
-        doc.add_paragraph("")
-        fecha_emision = doc.add_paragraph()
-        fecha_emision_run = fecha_emision.add_run(f"Fecha de emisión, Lima, {responses.get('fecha_emision', 'xx de xxxx de xxxx')}")
-        fecha_emision_run.bold = True
-        
-        # FIRMA
-        doc.add_paragraph("")
-        firma = doc.add_paragraph()
-        firma_run = firma.add_run("Xxxxxxxxxxxxxxxxxxxxxxxxxxx")
-        firma_run.bold = True
-        
-        representante = doc.add_paragraph()
-        representante_run = representante.add_run("Representante Pacífico Seguros")
-        representante_run.bold = True
-        
-        return doc
+    # Crear documento
+    doc = Document()
+    
+    # Configurar márgenes
+    section = doc.sections[0]
+    section.left_margin = Inches(1)
+    section.right_margin = Inches(1)
+    section.top_margin = Inches(1)
+    section.bottom_margin = Inches(1)
+    
+    # Línea 1: Certificado N° xxxxxxx -- Seguro de [NOMBRE]
+    p1 = doc.add_paragraph()
+    r1 = p1.add_run("Certificado N° xxxxxxx -- Seguro de ")
+    r1.italic = True
+    r2 = p1.add_run(nombre_seguro)
+    r2.bold = True
+    
+    # Línea 2: Póliza Nº xxxxx - Código de registro xxxxxxx
+    p2 = doc.add_paragraph()
+    r3 = p2.add_run("Póliza Nº xxxxx - Código de registro xxxxxxx")
+    r3.italic = True
+    
+    # Saludo
+    doc.add_paragraph("¡Hola Xxxxxxxxx!")
+    doc.add_paragraph("¡Felicidades! Estás asegurado.")
+    
+    # Confirmación
+    p3 = doc.add_paragraph("Confirmamos que tienes un seguro activo que te protege frente a ")
+    r4 = p3.add_run("[completar con el riesgo]")
+    r4.bold = True
+    
+    # CONTRATANTE
+    p4 = doc.add_paragraph()
+    r5 = p4.add_run("CONTRATANTE")
+    r5.bold = True
+    
+    doc.add_paragraph("XXXXX, RUC xxxxxxx, Dirección xxxxxxxxx")
+    doc.add_paragraph("Distrito xxxxxxx xxxxxxx también llamado sólo \"xxxxx\".")
+    
+    # Vigencia del Seguro
+    p5 = doc.add_paragraph()
+    r6 = p5.add_run("Vigencia del Seguro: XXXXXXXXXXX")
+    r6.bold = True
+    
+    doc.add_paragraph("Inicio de Vigencia: Desde las XX horas del DD/MM/AAA")
+    doc.add_paragraph("Tu seguro se renovará automáticamente.")
+    
+    # Información de Contacto
+    p6 = doc.add_paragraph()
+    r7 = p6.add_run("Información de Contacto de Pacífico Seguros")
+    r7.bold = True
+    
+    doc.add_paragraph("Pacífico Compañía de Seguros y Reaseguros S.A.")
+    doc.add_paragraph("RUC N 20332970411 Av. Juan de Arona 830, San Isidro")
+    doc.add_paragraph("Teléf.: XXX-XXXX / WhatsApp: +51 XXX-XXXX")
+    doc.add_paragraph("Pág. Web.: https://www.pacifico.com.pe/")
+    
+    # Mensaje importante
+    p7 = doc.add_paragraph()
+    r8 = p7.add_run("Si tienes alguna duda sobre tu cobertura o cómo usar tu seguro, contáctanos al número de teléfono indicado o escríbenos por WhatsApp.")
+    r8.bold = True
+    
+    # [Índice]
+    doc.add_paragraph("[Índice]")
+    
+    # ¿Quién es el ASEGURADO?
+    p8 = doc.add_paragraph()
+    r9 = p8.add_run("¿Quién es el ASEGURADO?")
+    r9.bold = True
+    
+    doc.add_paragraph("[Nombre y Apellidos del Asegurado]")
+    doc.add_paragraph("¡Tú estás asegurado!")
+    doc.add_paragraph("[Tipo Doc]")
+    doc.add_paragraph("[Número Doc]")
+    doc.add_paragraph("[Domicilio]")
+    doc.add_paragraph("[Correo]")
+    doc.add_paragraph("[Teléfono]")
+    
+    # Tu domicilio contractual
+    p9 = doc.add_paragraph()
+    r10 = p9.add_run("Tu domicilio contractual será el correo electrónico que brindaste en la Solicitud de Seguro. Si no lo hiciste, será la dirección física ingresada en los sistemas del [completar con la info del canal. Por ejemplo, para PT es el \"Banco\"].")
+    r10.bold = True
+    
+    doc.add_paragraph("Relación del ASEGURADO con el CONTRATANTE: XXXXXXX")
+    
+    # Datos del Beneficiario
+    p10 = doc.add_paragraph()
+    r11 = p10.add_run("Datos del Beneficiario (sólo en caso sea distinto del Asegurado):")
+    r11.bold = True
+    
+    doc.add_paragraph("Tipo de Documento: N°:")
+    doc.add_paragraph("Apellido Paterno: Apellido Materno:")
+    doc.add_paragraph("Nombres: Fecha de nacimiento:")
+    doc.add_paragraph("Correo electrónico: Teléfono:")
+    
+    # Tu domicilio contractual (repetido)
+    p11 = doc.add_paragraph()
+    r12 = p11.add_run("Tu domicilio contractual será el correo electrónico que brindaste en la Solicitud de Seguro.")
+    r12.bold = True
+    
+    # ¿En qué situaciones te cubre tu seguro?
+    p12 = doc.add_paragraph()
+    r13 = p12.add_run("¿En qué situaciones te cubre tu seguro?")
+    r13.bold = True
+    
+    p13 = doc.add_paragraph()
+    r14 = p13.add_run("[Aquí debes modificar en función a los inputs]")
+    r14.bold = True
+    
+    # ¿En qué situaciones adicionales te cubre tu seguro?
+    p14 = doc.add_paragraph()
+    r15 = p14.add_run("¿En qué situaciones adicionales te cubre tu seguro?")
+    r15.bold = True
+    
+    p15 = doc.add_paragraph()
+    r16 = p15.add_run("xxxxxxxxxxxxxx")
+    r16.bold = True
+    
+    # ¿Qué información importante debes considerar?
+    p16 = doc.add_paragraph()
+    r17 = p16.add_run("¿Qué información importante debes considerar?")
+    r17.bold = True
+    
+    p17 = doc.add_paragraph()
+    r18 = p17.add_run("[Completar con las condiciones de asegurabilidad por ejemplo en el caso de PT]")
+    r18.bold = True
+    
+    p18 = doc.add_paragraph()
+    r19 = p18.add_run("Según el tipo de evento que te haya ocurrido hay condiciones de tiempo en los cuales tendrás cobertura:")
+    r19.bold = True
+    
+    # ¿En qué situaciones que NO cubre tu seguro?
+    p19 = doc.add_paragraph()
+    r20 = p19.add_run("¿En qué situaciones que NO cubre tu seguro?")
+    r20.bold = True
+    
+    p20 = doc.add_paragraph()
+    r21 = p20.add_run("[Aquí debes modificar en función a los inputs]")
+    r21.bold = True
+    
+    # ¿Cómo hago uso de la cobertura?
+    p21 = doc.add_paragraph()
+    r22 = p21.add_run("¿Cómo hago uso de la cobertura?")
+    r22.bold = True
+    
+    p22 = doc.add_paragraph()
+    r23 = p22.add_run("Si sucediera alguna de las situaciones cubiertas por el seguro que describimos anteriormente:")
+    r23.bold = True
+    
+    p23 = doc.add_paragraph()
+    r24 = p23.add_run("[Aquí debes modificar en función a los inputs]")
+    r24.bold = True
+    
+    # Cita con sangría (blockquote)
+    p24 = doc.add_paragraph()
+    r25 = p24.add_run("El límite de tiempo que tienes para presentar tus documentos es de 10 años.")
+    r25.bold = True
+    p24.paragraph_format.left_indent = Inches(0.5)
+    
+    # Importante saber:
+    p25 = doc.add_paragraph()
+    r26 = p25.add_run("Importante saber:")
+    r26.bold = True
+    
+    doc.add_paragraph("• Una vez que tengamos todos tus documentos, tenemos 30 días para responderte. Si se aprueba, te pagamos en máximo 30 días. Si no respondemos a tiempo, se considera aprobada.")
+    doc.add_paragraph("• Si necesitamos más tiempo para revisar tu caso, te lo solicitaremos solo una vez y por el mismo plazo que el inicial. Si no estás de acuerdo, lo solicitaremos a la Superintendencia de Banca y Seguros.")
+    doc.add_paragraph("• Si no entregas los documentos o no haces la prueba poligráfica a tiempo, el proceso se detiene y no podremos hacer el pago.")
+    doc.add_paragraph("• Incluso después de pagar, podemos revisar el caso. Si no correspondía, podríamos pedirte el reembolso.")
+    
+    # ¿Cuánto cuesta y cómo se paga el seguro?
+    p26 = doc.add_paragraph()
+    r27 = p26.add_run("¿Cuánto cuesta y cómo se paga el seguro?")
+    r27.bold = True
+    
+    # Tabla
+    table = doc.add_table(rows=4, cols=2)
+    table.style = 'Table Grid'
+    
+    # Fila 1
+    row1_cells = table.rows[0].cells
+    p_cell1 = row1_cells[0].paragraphs[0]
+    r_cell1 = p_cell1.add_run("Moneda")
+    r_cell1.bold = True
+    p_cell2 = row1_cells[1].paragraphs[0]
+    r_cell2 = p_cell2.add_run("xxxxxxx")
+    r_cell2.bold = True
+    
+    # Fila 2
+    row2_cells = table.rows[1].cells
+    p_cell3 = row2_cells[0].paragraphs[0]
+    r_cell3 = p_cell3.add_run("Costo Total del Seguro")
+    r_cell3.bold = True
+    p_cell4 = row2_cells[1].paragraphs[0]
+    r_cell4 = p_cell4.add_run("xxxx")
+    r_cell4.bold = True
+    
+    # Fila 3
+    row3_cells = table.rows[2].cells
+    p_cell5 = row3_cells[0].paragraphs[0]
+    r_cell5 = p_cell5.add_run("IGV")
+    r_cell5.bold = True
+    p_cell6 = row3_cells[1].paragraphs[0]
+    r_cell6 = p_cell6.add_run("xxxx")
+    r_cell6.bold = True
+    
+    # Fila 4
+    row4_cells = table.rows[3].cells
+    p_cell7 = row4_cells[0].paragraphs[0]
+    r_cell7 = p_cell7.add_run("Frecuencia")
+    r_cell7.bold = True
+    p_cell8 = row4_cells[1].paragraphs[0]
+    r_cell8 = p_cell8.add_run("xxxx")
+    r_cell8.bold = True
+    
+    # Fila 5 (añadir fila)
+    row5 = table.add_row()
+    row5_cells = row5.cells
+    p_cell9 = row5_cells[0].paragraphs[0]
+    r_cell9 = p_cell9.add_run("¿Cómo te cobramos el seguro?")
+    r_cell9.bold = True
+    p_cell10 = row5_cells[1].paragraphs[0]
+    r_cell10 = p_cell10.add_run("[completar la información del medio de cobro]")
+    r_cell10.bold = True
+    
+    # El costo total del seguro incluye
+    p27 = doc.add_paragraph()
+    r28 = p27.add_run("El costo total del seguro incluye x% de comisión del [completar con la información del canal].")
+    r28.bold = True
+    
+    # ¿Cuánto dura tu seguro?
+    p28 = doc.add_paragraph()
+    r29 = p28.add_run("¿Cuánto dura tu seguro?")
+    r29.bold = True
+    
+    doc.add_paragraph("• Tu seguro puede durar un mes o un año, según el plan que elegiste.")
+    doc.add_paragraph("• Se renueva automáticamente cuando termina, salvo que tú o nosotros avisemos con 30 días de anticipación.")
+    doc.add_paragraph("• En cada renovación, el pago del seguro será igual al del contrato original, a menos que se acuerde algo distinto por escrito.")
+    
+    # ¿Cuándo empieza y cuándo termina?
+    p29 = doc.add_paragraph()
+    r30 = p29.add_run("¿Cuándo empieza y cuándo termina?")
+    r30.bold = True
+    
+    p30 = doc.add_paragraph()
+    r31 = p30.add_run("Inicio: Tu seguro empieza desde que lo contratas, si:")
+    r31.bold = True
+    
+    p31 = doc.add_paragraph("• ")
+    r32 = p31.add_run("[Completar con los requisitos propios del producto para empiece la vigencia.Por ejemplo para el caso de PT empieza si la tarjeta está activa].")
+    r32.bold = True
+    
+    doc.add_paragraph("• Firmaste la solicitud.")
+    doc.add_paragraph("• Brindaste información correcta y completa.")
+    
+    p32 = doc.add_paragraph()
+    r33 = p32.add_run("Fin: Tu seguro terminará si ocurre alguna de estas situaciones:")
+    r33.bold = True
+    
+    doc.add_paragraph("• No pagas en los 90 días siguientes a la fecha límite.")
+    
+    p33 = doc.add_paragraph("• ")
+    r34 = p33.add_run("[Completar con los requisitos propios del producto para empiece la vigencia.Por ejemplo para el caso de PT: \"Se cancela o vence tu tarjeta, y no la renuevas\"].")
+    r34.bold = True
+    
+    doc.add_paragraph("• Fallece el asegurado.")
+    
+    # Título con formato de heading
+    heading = doc.add_heading("¿Puedo arrepentirme de haber contratado el seguro?", level=2)
+    for run in heading.runs:
+        run.bold = True
+    
+    doc.add_paragraph("Sí. Si cambias de opinión, puedes cancelar el seguro sin dar una razón y sin penalidades dentro de los 15 días calendario desde que recibiste este Certificado.")
+    
+    # ¿Cómo hacerlo?
+    p34 = doc.add_paragraph()
+    r35 = p34.add_run("¿Cómo hacerlo?")
+    r35.bold = True
+    
+    doc.add_paragraph("Puedes usar el mismo canal por el que contrataste el seguro (página web, app, etc.), o escribir al área de Atención al Cliente de Pacífico Seguros. La dirección y canales disponibles están detallados en las Condiciones Particulares de tu póliza o en el Certificado de seguro.")
+    
+    # ¿Y si ya pagaste?
+    p35 = doc.add_paragraph()
+    r36 = p35.add_run("¿Y si ya pagaste?")
+    r36.bold = True
+    
+    doc.add_paragraph("Si ya pagaste el seguro, te devolveremos lo pagado en un máximo de 30 días calendario desde que se reciba tu comunicación.")
+    
+    # Importante saber
+    p36 = doc.add_paragraph()
+    r37 = p36.add_run("Importante saber")
+    r37.bold = True
+    
+    p37 = doc.add_paragraph()
+    r38 = p37.add_run("Solo puedes ejercer este derecho si aún no has usado ninguna cobertura ni beneficio del seguro, y si el contrato no ha vencido.")
+    r38.bold = True
+    
+    # Sobre tu certificado de seguro
+    p38 = doc.add_paragraph()
+    r39 = p38.add_run("Sobre tu certificado de seguro")
+    r39.bold = True
+    
+    doc.add_paragraph("Te lo enviaremos al correo que nos diste. También puedes verlo en nuestra app Mi Espacio Pacífico o en www.pacifico.com.pe.")
+    
+    # Otros puntos importantes que debes saber:
+    p39 = doc.add_paragraph()
+    r40 = p39.add_run("Otros puntos importantes que debes saber:")
+    r40.bold = True
+    
+    doc.add_paragraph("• Cuando envíes comunicaciones o pagos al banco, se considerarán como si fueran enviados directamente a nosotros, para el caso de pagos se considerará la fecha en que lo realizaste.")
+    doc.add_paragraph("• Somos los únicos responsables de las coberturas que contrataste y asumimos cualquier error u omisión del banco.")
+    doc.add_paragraph("• Todos los términos y condiciones de este seguro se encuentran definidos en las Condiciones Particulares, Condiciones Generales de la Póliza.")
+    doc.add_paragraph("• Si necesitas la póliza, puedes pedir una copia a Pacífico Seguros o al Banco. Te la entregaremos en máximo en 15 días calendario desde que la solicitas.")
+    
+    # Fecha de emisión
+    p40 = doc.add_paragraph()
+    r41 = p40.add_run("Fecha de emisión, Lima, xxde xxxx de xxxx")
+    r41.bold = True
+    
+    # Firma
+    p41 = doc.add_paragraph()
+    r42 = p41.add_run("Xxxxxxxxxxxxxxxxxxxxxxxxxxx")
+    r42.bold = True
+    
+    p42 = doc.add_paragraph()
+    r43 = p42.add_run("Representante Pacífico Seguros")
+    r43.bold = True
+    
+    return doc
 
-# ====== FUNCIÓN PRINCIPAL ======
 def main():
-    # Inicializar estado
-    if "step" not in st.session_state:
-        st.session_state.step = "welcome"
-        st.session_state.generator = CertificadoPacificoGenerator()
-        st.session_state.current_question = 0
-        st.session_state.responses = {}
-        st.session_state.chat_history = []
-    
-    generator = st.session_state.generator
-    
-    # HEADER PRINCIPAL
+    # Header
     st.markdown("""
     <div class="main-header">
         <h1>🛡️ Generador de Certificados Pacífico Seguros</h1>
-        <p>Asistente inteligente para generar certificados de seguro personalizados</p>
+        <p>Genera certificados con el formato exacto original</p>
     </div>
     """, unsafe_allow_html=True)
     
-    # NAVEGACIÓN
-    if st.session_state.step == "welcome":
-        show_welcome()
-    elif st.session_state.step == "interview":
-        show_interview()
-    elif st.session_state.step == "generate":
-        show_generation()
-
-def show_welcome():
-    """Pantalla de bienvenida"""
+    st.markdown("### Completa la información del seguro")
     
-    col1, col2 = st.columns([2, 1])
-    
-    with col1:
-        st.markdown("""
-        ### 👋 Bienvenido al Generador de Certificados Pacífico Seguros
-        
-        Este asistente te ayudará a generar certificados de seguro personalizados con el formato oficial de Pacífico Seguros.
-        
-        **¿Cómo funciona?**
-        
-        1. 📝 **Responde las preguntas** sobre el seguro y el asegurado
-        2. 🤖 **El asistente recopila** toda la información necesaria
-        3. 📄 **Genera el certificado** con el formato oficial de Pacífico
-        4. ⬇️ **Descarga tu documento** listo para usar
-        
-        **Características:**
-        - ✅ **Formato oficial** de Pacífico Seguros
-        - ✅ **Todos los campos** completados automáticamente  
-        - ✅ **Conserva el diseño** original del certificado
-        - ✅ **Listo para imprimir** o enviar por email
-        """)
-        
-        if st.button("🚀 Comenzar a generar certificado", use_container_width=True):
-            st.session_state.step = "interview"
-            st.session_state.chat_history = [{
-                "role": "assistant",
-                "content": "¡Hola! Soy tu asistente para generar certificados de Pacífico Seguros. Te haré algunas preguntas para completar toda la información necesaria. ¿Empezamos? 🛡️"
-            }]
-            st.rerun()
-    
-    with col2:
-        st.markdown("""
-        <div class="progress-card">
-            <h4>📊 Información requerida:</h4>
-            <ul>
-                <li>🆔 Datos del asegurado</li>
-                <li>🛡️ Información del seguro</li>
-                <li>💰 Costos y formas de pago</li>
-                <li>📅 Fechas y vigencias</li>
-                <li>📋 Coberturas y exclusiones</li>
-                <li>📞 Información de contacto</li>
-            </ul>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        st.info("""
-        **💡 Tip:** Ten a mano la información del seguro para completar el formulario más rápidamente.
-        """)
-
-def show_interview():
-    """Interfaz de entrevista conversacional"""
-    
-    st.header("💬 Conversación con tu asistente")
-    
-    # Sidebar con progreso
-    with st.sidebar:
-        st.header("📊 Progreso del certificado")
-        
-        total_questions = len(st.session_state.generator.variables)
-        completed = len(st.session_state.responses)
-        progress = completed / total_questions if total_questions > 0 else 0
-        
-        st.progress(progress)
-        st.write(f"**Completado:** {completed}/{total_questions}")
-        
-        if st.session_state.responses:
-            st.subheader("✅ Información guardada:")
-            for var, response in st.session_state.responses.items():
-                var_name = var.replace('_', ' ').title()
-                display_response = str(response)[:30] + "..." if len(str(response)) > 30 else str(response)
-                st.write(f"**{var_name}:** {display_response}")
-        
-        if st.button("🔄 Reiniciar"):
-            st.session_state.clear()
-            st.rerun()
-    
-    # Mostrar historial de chat
-    for message in st.session_state.chat_history:
-        if message["role"] == "assistant":
-            st.chat_message("assistant", avatar="🤖").write(message["content"])
-        else:
-            st.chat_message("user", avatar="👤").write(message["content"])
-    
-    # Lógica de preguntas
-    variables = st.session_state.generator.variables
-    current_q = st.session_state.current_question
-    
-    if current_q < len(variables):
-        current_var = variables[current_q]
-        
-        # Mostrar pregunta actual si no está en el historial
-        if not st.session_state.chat_history or "?" not in st.session_state.chat_history[-1]["content"]:
-            question_data = st.session_state.generator.questions[current_var]
-            question = question_data['question']
-            
-            st.session_state.chat_history.append({
-                "role": "assistant",
-                "content": question
-            })
-            st.chat_message("assistant", avatar="🤖").write(question)
-        
-        # Campo de entrada
-        show_input_field(current_var, current_q)
-    
-    else:
-        # Todas las preguntas completadas
-        st.session_state.chat_history.append({
-            "role": "assistant", 
-            "content": "🎉 ¡Excelente! He recopilado toda la información necesaria para generar tu certificado de Pacífico Seguros. El documento estará listo en un momento."
-        })
-        st.session_state.step = "generate"
-        st.rerun()
-
-def show_input_field(current_var, current_q):
-    """Muestra el campo de entrada apropiado"""
-    
-    question_data = st.session_state.generator.questions[current_var]
-    input_type = question_data['type']
-    help_text = question_data['help']
-    
-    col1, col2 = st.columns([4, 1])
-    
-    with col1:
-        if input_type == 'date':
-            user_input = st.date_input(
-                "Selecciona la fecha:",
-                key=f"input_{current_q}",
-                help=help_text
-            )
-            user_input = user_input.strftime("%d/%m/%Y")
-        
-        elif input_type == 'number':
-            user_input = st.number_input(
-                "Ingresa el monto:",
-                min_value=0.0,
-                step=0.01,
-                key=f"input_{current_q}",
-                help=help_text
-            )
-        
-        elif input_type == 'email':
-            user_input = st.text_input(
-                "Escribe el email:",
-                placeholder="ejemplo@correo.com",
-                key=f"input_{current_q}",
-                help=help_text
-            )
-        
-        elif input_type == 'textarea':
-            user_input = st.text_area(
-                "Descripción detallada:",
-                height=100,
-                key=f"input_{current_q}",
-                help=help_text
-            )
-        
-        else:
-            user_input = st.text_input(
-                "Tu respuesta:",
-                key=f"input_{current_q}",
-                help=help_text
-            )
-    
-    with col2:
-        if st.button("Enviar", key=f"send_{current_q}"):
-            handle_response(user_input, current_var, input_type)
-
-def handle_response(user_input, current_var, input_type):
-    """Procesa la respuesta del usuario"""
-    
-    # Validar respuesta
-    if not user_input or str(user_input).strip() == "":
-        st.error("Por favor proporciona una respuesta válida")
-        return
-    
-    if input_type == 'email' and '@' not in str(user_input):
-        st.error("Por favor ingresa un email válido")
-        return
-    
-    # Agregar respuesta del usuario al chat
-    st.session_state.chat_history.append({
-        "role": "user",
-        "content": str(user_input)
-    })
-    
-    # Guardar respuesta
-    st.session_state.responses[current_var] = user_input
-    
-    # Generar confirmación
-    confirmations = [
-        f"✅ Perfecto, guardé '{user_input}'",
-        f"📝 Excelente, tengo '{user_input}' registrado",
-        f"👍 Muy bien, información guardada",
-        f"✨ Entendido, siguiente pregunta..."
-    ]
-    
-    confirmation = random.choice(confirmations)
-    st.session_state.chat_history.append({
-        "role": "assistant",
-        "content": confirmation
-    })
-    
-    # Avanzar pregunta
-    st.session_state.current_question += 1
-    
-    st.rerun()
-
-def show_generation():
-    """Pantalla de generación del certificado"""
-    
-    st.header("🎉 ¡Certificado listo para generar!")
-    
-    # Mostrar últimos mensajes del chat
-    for message in st.session_state.chat_history[-2:]:
-        if message["role"] == "assistant":
-            st.chat_message("assistant", avatar="🤖").write(message["content"])
-    
-    # Resumen de información
-    col1, col2 = st.columns([2, 1])
-    
-    with col1:
-        st.subheader("📋 Información del certificado:")
-        
-        # Mostrar datos principales organizados
-        st.markdown("**👤 Datos del Asegurado:**")
-        st.write(f"• Nombre: {st.session_state.responses.get('nombre_asegurado', 'N/A')}")
-        st.write(f"• Documento: {st.session_state.responses.get('tipo_documento', 'N/A')} - {st.session_state.responses.get('numero_documento', 'N/A')}")
-        st.write(f"• Email: {st.session_state.responses.get('correo_asegurado', 'N/A')}")
-        
-        st.markdown("**🛡️ Información del Seguro:**")
-        st.write(f"• Tipo: {st.session_state.responses.get('nombre_seguro', 'N/A')}")
-        st.write(f"• Certificado: {st.session_state.responses.get('numero_certificado', 'N/A')}")
-        st.write(f"• Póliza: {st.session_state.responses.get('numero_poliza', 'N/A')}")
-        
-        st.markdown("**💰 Información Financiera:**")
-        st.write(f"• Costo: {st.session_state.responses.get('costo_total', 'N/A')} {st.session_state.responses.get('moneda', '')}")
-        st.write(f"• Frecuencia: {st.session_state.responses.get('frecuencia_pago', 'N/A')}")
-    
-    with col2:
-        st.metric(
-            label="Campos completados",
-            value=len(st.session_state.responses),
-            delta=f"{len(st.session_state.generator.variables)} total"
+    # Formulario más claro
+    with st.container():
+        nombre_seguro = st.text_input(
+            "**¿Cuál es el tipo de seguro?**",
+            placeholder="Ejemplo: Vida, Vehicular, Hogar, Salud, etc.",
+            help="Especifica el tipo de seguro para el certificado",
+            key="seguro_input"
         )
         
-        st.info(f"""
-        📄 **Tipo:** Certificado Pacífico Seguros
+        # Espacio
+        st.markdown("<br>", unsafe_allow_html=True)
         
-        ⏱️ **Generado:** {datetime.now().strftime('%H:%M')}
+        # Botón más visible
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            generar = st.button(
+                "📄 GENERAR CERTIFICADO",
+                use_container_width=True,
+                type="primary"
+            )
+    
+    # Procesamiento
+    if generar:
+        if nombre_seguro and nombre_seguro.strip():
+            with st.spinner("Generando certificado con formato original..."):
+                try:
+                    # Generar documento exacto
+                    doc = create_exact_certificate(nombre_seguro.strip())
+                    
+                    # Guardar en memoria
+                    doc_buffer = io.BytesIO()
+                    doc.save(doc_buffer)
+                    doc_buffer.seek(0)
+                    
+                    # Nombre del archivo
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    filename = f"Certificado_Pacifico_{nombre_seguro.replace(' ', '_')}_{timestamp}.docx"
+                    
+                    st.success("✅ Certificado generado con formato original preservado")
+                    
+                    # Información
+                    st.info(f"""
+                    **📋 Certificado generado:**
+                    • Tipo de seguro: {nombre_seguro}
+                    • Formato: Original de Pacífico Seguros
+                    • Estado: Listo para personalizar
+                    """)
+                    
+                    # Descarga
+                    st.download_button(
+                        label="⬇️ DESCARGAR CERTIFICADO",
+                        data=doc_buffer.getvalue(),
+                        file_name=filename,
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        use_container_width=True
+                    )
+                    
+                    st.warning("""
+                    **📝 Nota:** El documento mantiene el formato exacto original. 
+                    Todos los campos aparecen como en la plantilla original para que puedas editarlos manualmente.
+                    """)
+                    
+                except Exception as e:
+                    st.error(f"Error al generar el certificado: {str(e)}")
+        else:
+            st.error("⚠️ Por favor ingresa el tipo de seguro")
+    
+    # Información adicional
+    if not generar:
+        st.markdown("---")
+        st.markdown("""
+        **💡 ¿Cómo funciona?**
         
-        ✅ **Estado:** Listo para descargar
+        1. Escribe el tipo de seguro (Ej: "Vida", "Vehicular", "Hogar")
+        2. Haz clic en generar
+        3. Descarga el certificado con formato original
+        4. Edita el documento Word para personalizar los demás campos
+        
+        **✅ El documento mantiene:**
+        • Formato exacto del original
+        • Todas las negritas y cursivas
+        • Estructura y espaciado original
+        • Solo cambia el nombre del seguro
         """)
-    
-    # Generar certificado
-    if st.button("📄 Generar Certificado Pacífico Seguros", use_container_width=True):
-        generate_certificate()
-    
-    # Opciones adicionales
-    st.markdown("---")
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        if st.button("🔄 Generar otro certificado", use_container_width=True):
-            st.session_state.clear()
-            st.rerun()
-    
-    with col2:
-        if st.button("✏️ Modificar información", use_container_width=True):
-            st.session_state.step = "interview"
-            st.session_state.current_question = 0
-            st.session_state.responses = {}
-            st.session_state.chat_history = st.session_state.chat_history[:1]
-            st.rerun()
 
-def generate_certificate():
-    """Genera y descarga el certificado"""
-    
-    with st.spinner("🤖 Generando tu certificado Pacífico Seguros..."):
-        try:
-            generator = st.session_state.generator
-            
-            # Generar documento
-            doc = generator.generate_certificate_document(st.session_state.responses)
-            
-            # Guardar en memoria
-            doc_buffer = io.BytesIO()
-            doc.save(doc_buffer)
-            doc_buffer.seek(0)
-            
-            # Nombre del archivo
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            nombre_asegurado = st.session_state.responses.get('nombre_asegurado', 'Asegurado')
-            nombre_archivo = f"Certificado_Pacifico_{nombre_asegurado.replace(' ', '_')}_{timestamp}.docx"
-            
-            st.success("✅ ¡Certificado generado exitosamente!")
-            
-            # Botón de descarga
-            st.download_button(
-                label="⬇️ Descargar Certificado Pacífico Seguros",
-                data=doc_buffer.getvalue(),
-                file_name=nombre_archivo,
-                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                use_container_width=True
-            )
-            
-            # Mensaje final
-            st.chat_message("assistant", avatar="🤖").write(
-                "🎉 ¡Perfecto! Tu certificado de Pacífico Seguros está listo. "
-                "El documento mantiene el formato oficial y tiene toda la información completada. "
-                "¡Gracias por usar el generador!"
-            )
-            
-            # Vista previa de información
-            with st.expander("📋 Vista previa del certificado generado"):
-                st.markdown(f"""
-                **Certificado N° {st.session_state.responses.get('numero_certificado')}**
-                
-                **Asegurado:** {st.session_state.responses.get('nombre_asegurado')}
-                
-                **Seguro:** {st.session_state.responses.get('nombre_seguro')}
-                
-                **Póliza:** {st.session_state.responses.get('numero_poliza')}
-                
-                **Vigencia:** Desde {st.session_state.responses.get('fecha_inicio')}
-                
-                **Contacto:** {st.session_state.responses.get('correo_asegurado')}
-                """)
-            
-        except Exception as e:
-            st.error(f"❌ Error al generar el certificado: {str(e)}")
-            st.info("Por favor verifica que toda la información esté completa e inténtalo de nuevo.")
-
-# ====== EJECUTAR APLICACIÓN ======
 if __name__ == "__main__":
     main()
